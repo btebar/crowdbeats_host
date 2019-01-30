@@ -1,15 +1,15 @@
 const express = require('express');
-// require('dotenv').config();
-const fetch = require("node-fetch");
+require('dotenv').load();
 var cors = require('cors')
-const bodyParser = require('body-parser');
+var SpotifyWebApi = require('spotify-web-api-node');
+
 const app = express();
 app.set('port', process.env.PORT || 8888);
 const port = process.env.PORT || 8888; 
 const party_id = makeid();
-const playlist_id = "7MkrOB6DfoDsLmwETqnXL4";
+var playlist_id = "7MkrOB6DfoDsLmwETqnXL4";
+// var spotifyAuth = false;
 var playlistObj = [];
-var SpotifyWebApi = require('spotify-web-api-node');
 var accessToken;
 
 var corsOptions = {
@@ -18,7 +18,6 @@ var corsOptions = {
 }
 
 app.use(cors(corsOptions))
-
 
 function makeid() {
   var text = "";
@@ -36,10 +35,10 @@ function handleErrors(response) {
   return response;
 }
 
-const client_id = '68c8c31b05a34904a91f88aa5167e935'; // Your client id
-const client_secret = 'ebddadd2800b45c18bbe9a903781d212'; // Your secret
-const redirect_uri = 'http://crowdbeats-host.herokuapp.com/access'; // Your redirect uri
-// const redirect_uri = 'http://localhost:8888/access'; // Your redirect uri
+const client_id = process.env.CLIENT_ID; // Your client id
+const client_secret = process.env.CLIENT_SECRET; // Your secret
+const redirect_uri = process.env.REDIRECT_URI; // Your redirect uri
+
 const scopes = ['user-read-private', 'user-read-email','playlist-modify-public', 'playlist-modify-private'];
 const showDialog = false;
 
@@ -49,8 +48,18 @@ var spotifyApi = new SpotifyWebApi({
   redirectUri : redirect_uri
 });
 
+
+// app.get('/logout' , function(req,res,next) {
+//   spotifyApi.resetAccessToken();
+//   spotifyApi.resetRefreshToken();
+//   code = '';
+//   spotifyAuth = false;
+//   res.send('Thanks for using CrowdBeats ');
+// });
+
 app.get('/', function(req, res) {
-  if(playlistObj.length == 0){
+
+  if(playlistObj.length === 0){
     res.redirect('/begin');
   }
   else{
@@ -67,7 +76,8 @@ app.get('/access', function(req, res, next) {
     spotifyApi.authorizationCodeGrant(code)
     .then(function(data) {
       accessToken = data.body.access_token
-      res.redirect('/newplaylist');
+      // spotifyAuth = true;
+      res.redirect('/party_id');
     }, function(err) {
       console.log('Something went wrong when retrieving the access token!', err);
       next(err)
@@ -75,7 +85,7 @@ app.get('/access', function(req, res, next) {
 }) 
 
 app.get('/party_id', function(req, res, next) {
-  res.send("party_id is "+party_id);
+  res.send("Your party code is "+party_id);
 })
 
 app.get('/newguest', function(req, res, next){
@@ -107,7 +117,7 @@ app.get('/search', function(req, res, next) {
   .then(function(data) {
     for(var i = 0; i< data.body.tracks.items.length; ++i){
       const item = data.body.tracks.items[i];
-      searchObj.push({id:item.id, name: item.name})
+      searchObj.push({id:item.id, name: item.name, artist: item.artists[0].name})
     }
     res.send(searchObj);
   }, function(err) {
@@ -119,35 +129,33 @@ else{
 }
 })
 
+app.get('/setplaylist', function(req, res, next){
+playlist_id = req.query.id;
+res.redirect('/playlist');
+});
 
-
-app.get('/newplaylist', function(req, res, next) {
+app.get('/playlist', function(req, res, next) {
   spotifyApi.setAccessToken(accessToken);
+  playlistObj = [];
   spotifyApi.getPlaylist(playlist_id)
   .then(function(data) {
     for(var i = 0; i< data.body.tracks.items.length; ++i){
         const item = data.body.tracks.items[i].track;
-        playlistObj.push({id:item.id, name: item.name, votes: 1})
+        playlistObj.push({id:item.id, name: item.name, artist: item.artists[0].name, votes: 1})
       }
-      res.redirect('/party_id');
+      res.send(playlistObj);
     }, function(err) {
     console.log('Something went wrong!', err);
   });
 })
 
 
-
-app.get('/playlist', function(req, res, next) {
-  res.send(playlistObj);
-})
-
-
-
 app.get('/addsong', function(req, res, next) {
   spotifyApi.setAccessToken(accessToken);
-  spotifyApi.addTracksToPlaylist(playlist_id, ["spotify:track:4AhSkRYioEIfGvCV19peYN"])
+  var addtracks = ["spotify:track:"+req.query.id];
+  spotifyApi.addTracksToPlaylist(playlist_id, addtracks)
   .then(function(data) {
-    console.log('Added tracks to playlist!');
+    res.send({"success" : true , "id" : req.query.id});
   }, function(err) {
     console.log('Something went wrong!', err);
   });
@@ -175,7 +183,6 @@ app.get('/vote', function(req, res, next) {
    }
   }
   res.send(playlistObj);
-
 })
 
 function reorder(initial, final){
